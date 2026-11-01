@@ -302,6 +302,8 @@ namespace LunarAccountManager
 
             if (!Web.IsUuid(uuid)) return;
 
+            _lbSkinHint.Text = "正在加载…";
+
             string[] heads =
             {
                 "https://mc-heads.net/avatar/" + uuid + "/96",
@@ -317,8 +319,8 @@ namespace LunarAccountManager
 
             Task.Factory.StartNew(delegate
             {
-                Image head = Web.TryDownloadImage(heads, 6000);
-                Image body = Web.TryDownloadImage(bodies, 6000);
+                Image head = Web.TryDownloadImage(heads, 4000);
+                Image body = Web.TryDownloadImage(bodies, 4000);
                 try
                 {
                     BeginInvoke((Action)delegate
