@@ -17,6 +17,8 @@ namespace LunarAccountManager
     public static class Web
     {
         private static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
+        private static readonly object SkinGate = new object();
+        private static DateTime _lastSkinCall = DateTime.MinValue;
 
         static Web()
         {
@@ -140,6 +142,96 @@ namespace LunarAccountManager
 
         public const string BrowserUserAgent =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+        /// <summary>GET with the same direct/proxy race as images.</summary>
+        public static string HttpGetRace(string url, int timeoutMs)
+        {
+            string target = url;
+            var direct = System.Threading.Tasks.Task.Factory.StartNew(
+                delegate { return HttpGetQuiet(target, timeoutMs, false); });
+            var proxied = System.Threading.Tasks.Task.Factory.StartNew(
+                delegate { return HttpGetQuiet(target, timeoutMs, true); });
+
+            var all = new[] { direct, proxied };
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs + 500);
+            while (DateTime.UtcNow < deadline)
+            {
+                bool bothDone = true;
+                foreach (var t in all)
+                {
+                    if (!t.IsCompleted) { bothDone = false; continue; }
+                    string s = t.Result;
+                    if (!string.IsNullOrEmpty(s))
+                        return s;
+                }
+                if (bothDone) break;
+                System.Threading.Thread.Sleep(50);
+            }
+            return null;
+        }
+
+        private static string HttpGetQuiet(string url, int timeoutMs, bool useSystemProxy)
+        {
+            try
+            {
+                var req = (HttpWebRequest)WebRequest.Create(url);
+                req.Timeout = timeoutMs;
+                req.ReadWriteTimeout = timeoutMs;
+                req.UserAgent = BrowserUserAgent;
+                if (!useSystemProxy) req.Proxy = null;
+                using (var resp = (HttpWebResponse)req.GetResponse())
+                using (var reader = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
+                    return reader.ReadToEnd();
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Asks Mojang for the skin texture URL of a premium UUID. This is the only source
+        /// that is guaranteed to match the skin the account really wears.
+        /// </summary>
+        public static string GetSkinTextureUrl(string uuid, int timeoutMs)
+        {
+            try
+            {
+                // sessionserver allows roughly one request per second per IP
+                lock (SkinGate)
+                {
+                    double since = (DateTime.UtcNow - _lastSkinCall).TotalMilliseconds;
+                    if (since < 1200) System.Threading.Thread.Sleep((int)(1200 - since));
+                    _lastSkinCall = DateTime.UtcNow;
+                }
+
+                string id = uuid.Replace("-", "").ToLowerInvariant();
+                string json = HttpGetRace("https://sessionserver.mojang.com/session/minecraft/profile/" + id, timeoutMs);
+                if (string.IsNullOrEmpty(json)) return null;
+
+                var map = Json.DeserializeObject(json) as System.Collections.Generic.Dictionary<string, object>;
+                if (map == null || !map.ContainsKey("properties")) return null;
+
+                var props = map["properties"] as object[];
+                if (props == null) return null;
+
+                foreach (object o in props)
+                {
+                    var d = o as System.Collections.Generic.Dictionary<string, object>;
+                    if (d == null || !d.ContainsKey("name")) continue;
+                    if (Convert.ToString(d["name"]) != "textures") continue;
+
+                    string b64 = Convert.ToString(d["value"]);
+                    string decoded = Encoding.UTF8.GetString(Convert.FromBase64String(b64));
+                    var tm = Json.DeserializeObject(decoded) as System.Collections.Generic.Dictionary<string, object>;
+                    if (tm == null || !tm.ContainsKey("textures")) continue;
+                    var textures = tm["textures"] as System.Collections.Generic.Dictionary<string, object>;
+                    if (textures == null || !textures.ContainsKey("SKIN")) continue;
+                    var skin = textures["SKIN"] as System.Collections.Generic.Dictionary<string, object>;
+                    if (skin != null && skin.ContainsKey("url"))
+                        return Convert.ToString(skin["url"]);
+                }
+            }
+            catch { }
+            return null;
+        }
 
         public static string HttpGet(string url, int timeoutMs)
         {

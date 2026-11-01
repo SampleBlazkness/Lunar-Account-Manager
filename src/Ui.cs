@@ -27,6 +27,7 @@ namespace LunarAccountManager
         private bool _dirty;
         private bool _newMode;
         private string _selectedKey;
+        private string _skinInFlight;
         private int _skinToken;
 
         private static readonly string[] LunarProcessNames = { "Lunar Client", "LunarClient", "lunarclient", "Lunar Client Installer" };
@@ -295,6 +296,11 @@ namespace LunarAccountManager
 
         private void LoadSkin(string uuid)
         {
+            // Ignore the duplicate selection event that WinForms raises while the list is
+            // being rebuilt; starting a second fetch would invalidate the first one's token.
+            if (!string.IsNullOrEmpty(uuid) && string.Equals(_skinInFlight, uuid, StringComparison.OrdinalIgnoreCase))
+                return;
+
             _skinToken++;
             int token = _skinToken;
             _picHead.Image = null;
@@ -331,12 +337,60 @@ namespace LunarAccountManager
                 "https://minotar.net/armor/body/" + uuid + "/140.png"
             };
 
+            // A cached skin texture renders offline and is the exact skin the account wears.
+            string skinPath = Path.Combine(CacheDir(), uuid.ToLowerInvariant() + "_skin.png");
+            Bitmap cachedSkin = LoadSkinTexture(skinPath);
+            if (cachedSkin != null)
+            {
+                _picHead.Image = SkinRender.Head(cachedSkin, 96);
+                _picBody.Image = SkinRender.Body(cachedSkin, 150, 270);
+                _lbSkinHint.Text = "";
+                if ((DateTime.UtcNow - File.GetLastWriteTimeUtc(skinPath)).TotalHours < 12)
+                {
+                    cachedSkin.Dispose();
+                    return;
+                }
+            }
+
+            _skinInFlight = uuid;
+
             Task.Factory.StartNew(delegate
             {
-                var headTask = Task.Factory.StartNew(delegate { return Web.TryDownloadImage(heads, 4000); });
-                var bodyTask = Task.Factory.StartNew(delegate { return Web.TryDownloadImage(bodies, 4000); });
-                Image head = headTask.Result;
-                Image body = bodyTask.Result;
+                Image head = null;
+                Image body = null;
+
+                string texUrl = Web.GetSkinTextureUrl(uuid, 4000);
+                LogSkin(uuid, "url=" + (texUrl == null ? "null" : "ok"));
+                Bitmap skin = null;
+                if (texUrl != null)
+                {
+                    Image tex = Web.TryDownloadImage(new[] { texUrl }, 4000);
+                    skin = tex as Bitmap;
+                    if (skin != null && (skin.Width < 64 || skin.Height < 64)) { skin.Dispose(); skin = null; }
+                }
+                LogSkin(uuid, "texture=" + (skin == null ? "null" : skin.Width + "x" + skin.Height));
+                if (skin != null)
+                {
+                    try
+                    {
+                        head = SkinRender.Head(skin, 96);
+                        body = SkinRender.Body(skin, 150, 270);
+                        SaveSkinTexture(skinPath, skin);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogSkin(uuid, "render error: " + ex.Message);
+                    }
+                    finally { skin.Dispose(); }
+                }
+                else
+                {
+                    var headTask = Task.Factory.StartNew(delegate { return Web.TryDownloadImage(heads, 4000); });
+                    var bodyTask = Task.Factory.StartNew(delegate { return Web.TryDownloadImage(bodies, 4000); });
+                    head = headTask.Result;
+                    body = bodyTask.Result;
+                }
+
                 try
                 {
                     BeginInvoke((Action)delegate
@@ -345,6 +399,8 @@ namespace LunarAccountManager
                         {
                             if (head != null) head.Dispose();
                             if (body != null) body.Dispose();
+                            if (string.Equals(_skinInFlight, uuid, StringComparison.OrdinalIgnoreCase))
+                                _skinInFlight = null;
                             return;
                         }
                         bool missing = head == null || body == null;
@@ -353,6 +409,8 @@ namespace LunarAccountManager
                         if (head != null) SaveCached(uuid, "head", head);
                         if (body != null) SaveCached(uuid, "body", body);
                         _lbSkinHint.Text = missing ? "未找到皮肤\n显示默认形象" : "";
+                        if (string.Equals(_skinInFlight, uuid, StringComparison.OrdinalIgnoreCase))
+                            _skinInFlight = null;
                     });
                 }
                 catch { }
@@ -637,6 +695,36 @@ namespace LunarAccountManager
                 if (File.Exists(p) && (DateTime.UtcNow - File.GetLastWriteTimeUtc(p)).TotalHours < 12)
                     return;
                 img.Save(p, System.Drawing.Imaging.ImageFormat.Png);
+            }
+            catch { }
+        }
+
+        private static Bitmap LoadSkinTexture(string path)
+        {
+            try
+            {
+                if (!File.Exists(path)) return null;
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (var img = Image.FromStream(fs))
+                    return new Bitmap(img);
+            }
+            catch { return null; }
+        }
+
+        private static void SaveSkinTexture(string path, Bitmap skin)
+        {
+            try { skin.Save(path, System.Drawing.Imaging.ImageFormat.Png); }
+            catch { }
+        }
+
+        private static void LogSkin(string uuid, string message)
+        {
+            try
+            {
+                string p = Path.Combine(CacheDir(), "skin.log");
+                if (File.Exists(p) && new FileInfo(p).Length > 200 * 1024)
+                    File.Delete(p);
+                File.AppendAllText(p, DateTime.Now.ToString("HH:mm:ss") + " " + uuid + " " + message + Environment.NewLine);
             }
             catch { }
         }
