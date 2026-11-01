@@ -95,7 +95,8 @@ namespace LunarAccountManager
                     if (ms.Length == 0)
                         return null;
                     ms.Position = 0;
-                    return Image.FromStream(ms);
+                    using (var decoded = Image.FromStream(ms))
+                        return new Bitmap(decoded);   // copy: the stream is disposed below
                 }
             }
             catch
