@@ -70,6 +70,11 @@ namespace LunarAccountManager
 
         public static Image DownloadImage(string url, int timeoutMs)
         {
+            return DownloadImage(url, timeoutMs, true);
+        }
+
+        public static Image DownloadImage(string url, int timeoutMs, bool useSystemProxy)
+        {
             try
             {
                 var req = (HttpWebRequest)WebRequest.Create(url);
@@ -77,6 +82,8 @@ namespace LunarAccountManager
                 req.ReadWriteTimeout = timeoutMs;
                 req.UserAgent = BrowserUserAgent;
                 req.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+                if (!useSystemProxy)
+                    req.Proxy = null;
                 using (var resp = (HttpWebResponse)req.GetResponse())
                 using (var stream = resp.GetResponseStream())
                 using (var ms = new MemoryStream())
@@ -97,14 +104,20 @@ namespace LunarAccountManager
             }
         }
 
-        /// <summary>Tries each URL in order and returns the first image that downloads.</summary>
+        /// <summary>
+        /// Tries every URL, first directly and then through the system proxy (a Clash/V2Ray
+        /// proxy that is switched off but still configured would otherwise break every request).
+        /// </summary>
         public static Image TryDownloadImage(string[] urls, int timeoutMs)
         {
-            foreach (string url in urls)
+            foreach (bool useProxy in new[] { false, true })
             {
-                Image img = DownloadImage(url, timeoutMs);
-                if (img != null)
-                    return img;
+                foreach (string url in urls)
+                {
+                    Image img = DownloadImage(url, timeoutMs, useProxy);
+                    if (img != null)
+                        return img;
+                }
             }
             return null;
         }

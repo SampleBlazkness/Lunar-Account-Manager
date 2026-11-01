@@ -9,7 +9,8 @@ Lunar Client 的账号数据保存在 `%USERPROFILE%\.lunarclient\settings\game\
 - 账户列表：显示玩家名、UUID、有效期、当前激活账户
 - 新增 / 删除账户，编辑玩家名与 UUID
 - 「查询 UUID」：按玩家名请求 Mojang 接口，查不到时提示「玩家不存在」
-- 皮肤预览：头像与全身图，按 UUID 拉取
+- 皮肤预览：头像与全身图，按 UUID 拉取；依次尝试 mc-heads / crafatar / minotar，先直连再走系统代理
+- 没有皮肤或全部源都失败时，显示内置的默认形象（类似 HMCL 对离线账户的处理）
 - 「设为当前」：切换 `activeAccountLocalId`
 - 「刷新 +12 小时」：更新 `accessTokenExpiresAt`
 - 「保存到 Lunar」：把当前填写的内容写入文件，写入后自动重读并刷新列表

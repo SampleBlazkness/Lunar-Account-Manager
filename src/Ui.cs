@@ -329,10 +329,10 @@ namespace LunarAccountManager
                             if (body != null) body.Dispose();
                             return;
                         }
-                        _picHead.Image = head;
-                        _picBody.Image = body;
-                        if (head == null && body == null)
-                            _lbSkinHint.Text = "皮肤加载失败\n检查网络或代理";
+                        bool missing = head == null || body == null;
+                        _picHead.Image = head ?? MakePlaceholder(true);
+                        _picBody.Image = body ?? MakePlaceholder(false);
+                        _lbSkinHint.Text = missing ? "未找到皮肤\n显示默认形象" : "";
                     });
                 }
                 catch { }
@@ -530,6 +530,57 @@ namespace LunarAccountManager
         }
 
         // ----------------------------------------------------------- helpers
+
+        /// <summary>
+        /// Fallback avatar used when a UUID has no skin (offline accounts) or the skin
+        /// services cannot be reached, so the panel never shows empty boxes.
+        /// </summary>
+        private static Image MakePlaceholder(bool headOnly)
+        {
+            var bg = Color.FromArgb(236, 238, 241);
+            var skin = Color.FromArgb(178, 178, 178);
+            var dark = Color.FromArgb(92, 92, 92);
+            var hair = Color.FromArgb(72, 72, 72);
+
+            if (headOnly)
+            {
+                var bmp = new Bitmap(96, 96);
+                using (var g = Graphics.FromImage(bmp))
+                using (var bSkin = new SolidBrush(skin))
+                using (var bDark = new SolidBrush(dark))
+                using (var bHair = new SolidBrush(hair))
+                {
+                    g.Clear(bg);
+                    g.FillRectangle(bSkin, 18, 16, 60, 64);
+                    g.FillRectangle(bHair, 18, 16, 60, 16);
+                    g.FillRectangle(bDark, 32, 44, 8, 8);
+                    g.FillRectangle(bDark, 56, 44, 8, 8);
+                    g.FillRectangle(bDark, 38, 62, 20, 4);
+                }
+                return bmp;
+            }
+
+            var body = new Bitmap(150, 270);
+            using (var g = Graphics.FromImage(body))
+            using (var bSkin = new SolidBrush(skin))
+            using (var bDark = new SolidBrush(dark))
+            using (var bHair = new SolidBrush(hair))
+            using (var bShirt = new SolidBrush(Color.FromArgb(96, 128, 176)))
+            using (var bPants = new SolidBrush(Color.FromArgb(72, 82, 104)))
+            {
+                g.Clear(bg);
+                g.FillRectangle(bSkin, 55, 18, 40, 40);
+                g.FillRectangle(bHair, 55, 18, 40, 12);
+                g.FillRectangle(bDark, 63, 36, 6, 6);
+                g.FillRectangle(bDark, 81, 36, 6, 6);
+                g.FillRectangle(bSkin, 22, 64, 20, 74);
+                g.FillRectangle(bSkin, 108, 64, 20, 74);
+                g.FillRectangle(bShirt, 45, 62, 60, 80);
+                g.FillRectangle(bPants, 47, 146, 26, 100);
+                g.FillRectangle(bPants, 77, 146, 26, 100);
+            }
+            return body;
+        }
 
         private static string ValidateName(string name)
         {
