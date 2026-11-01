@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -302,7 +303,20 @@ namespace LunarAccountManager
 
             if (!Web.IsUuid(uuid)) return;
 
-            _lbSkinHint.Text = "正在加载…";
+            Image cachedHead = LoadCached(uuid, "head");
+            Image cachedBody = LoadCached(uuid, "body");
+            if (cachedHead != null || cachedBody != null)
+            {
+                _picHead.Image = cachedHead ?? MakePlaceholder(true);
+                _picBody.Image = cachedBody ?? MakePlaceholder(false);
+                _lbSkinHint.Text = "";
+            }
+            else
+            {
+                _picHead.Image = MakePlaceholder(true);
+                _picBody.Image = MakePlaceholder(false);
+                _lbSkinHint.Text = "正在加载…";
+            }
 
             string[] heads =
             {
@@ -319,8 +333,10 @@ namespace LunarAccountManager
 
             Task.Factory.StartNew(delegate
             {
-                Image head = Web.TryDownloadImage(heads, 4000);
-                Image body = Web.TryDownloadImage(bodies, 4000);
+                var headTask = Task.Factory.StartNew(delegate { return Web.TryDownloadImage(heads, 4000); });
+                var bodyTask = Task.Factory.StartNew(delegate { return Web.TryDownloadImage(bodies, 4000); });
+                Image head = headTask.Result;
+                Image body = bodyTask.Result;
                 try
                 {
                     BeginInvoke((Action)delegate
@@ -334,6 +350,8 @@ namespace LunarAccountManager
                         bool missing = head == null || body == null;
                         _picHead.Image = head ?? MakePlaceholder(true);
                         _picBody.Image = body ?? MakePlaceholder(false);
+                        if (head != null) SaveCached(uuid, "head", head);
+                        if (body != null) SaveCached(uuid, "body", body);
                         _lbSkinHint.Text = missing ? "未找到皮肤\n显示默认形象" : "";
                     });
                 }
@@ -582,6 +600,45 @@ namespace LunarAccountManager
                 g.FillRectangle(bPants, 77, 146, 26, 100);
             }
             return body;
+        }
+
+        /// <summary>Skin images are cached on disk so the next launch shows them instantly.</summary>
+        private static string CacheDir()
+        {
+            string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                                      "LunarAccountManager", "skins");
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            return dir;
+        }
+
+        private static string CachePath(string uuid, string kind)
+        {
+            return Path.Combine(CacheDir(), uuid.ToLowerInvariant() + "_" + kind + ".png");
+        }
+
+        private static Image LoadCached(string uuid, string kind)
+        {
+            try
+            {
+                string p = CachePath(uuid, kind);
+                if (!File.Exists(p)) return null;
+                using (var fs = new FileStream(p, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (var img = Image.FromStream(fs))
+                    return new Bitmap(img);
+            }
+            catch { return null; }
+        }
+
+        private static void SaveCached(string uuid, string kind, Image img)
+        {
+            try
+            {
+                string p = CachePath(uuid, kind);
+                if (File.Exists(p) && (DateTime.UtcNow - File.GetLastWriteTimeUtc(p)).TotalHours < 12)
+                    return;
+                img.Save(p, System.Drawing.Imaging.ImageFormat.Png);
+            }
+            catch { }
         }
 
         private static string ValidateName(string name)

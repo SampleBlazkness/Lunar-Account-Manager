@@ -106,18 +106,33 @@ namespace LunarAccountManager
         }
 
         /// <summary>
-        /// Tries every URL, first directly and then through the system proxy (a Clash/V2Ray
-        /// proxy that is switched off but still configured would otherwise break every request).
+        /// Downloads an image racing the direct connection against the system proxy, so a
+        /// proxy that is switched off (or a direct route that is blocked) cannot stall the UI.
         /// </summary>
         public static Image TryDownloadImage(string[] urls, int timeoutMs)
         {
-            foreach (bool useProxy in new[] { false, true })
+            foreach (string url in urls)
             {
-                foreach (string url in urls)
+                string target = url;
+                var direct = System.Threading.Tasks.Task.Factory.StartNew(
+                    delegate { return DownloadImage(target, timeoutMs, false); });
+                var proxied = System.Threading.Tasks.Task.Factory.StartNew(
+                    delegate { return DownloadImage(target, timeoutMs, true); });
+
+                var all = new[] { direct, proxied };
+                var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs + 500);
+                while (DateTime.UtcNow < deadline)
                 {
-                    Image img = DownloadImage(url, timeoutMs, useProxy);
-                    if (img != null)
-                        return img;
+                    bool bothDone = true;
+                    foreach (var t in all)
+                    {
+                        if (!t.IsCompleted) { bothDone = false; continue; }
+                        Image img = t.Result;
+                        if (img != null)
+                            return img;
+                    }
+                    if (bothDone) break;
+                    System.Threading.Thread.Sleep(50);
                 }
             }
             return null;
