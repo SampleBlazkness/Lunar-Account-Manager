@@ -75,7 +75,8 @@ namespace LunarAccountManager
                 var req = (HttpWebRequest)WebRequest.Create(url);
                 req.Timeout = timeoutMs;
                 req.ReadWriteTimeout = timeoutMs;
-                req.UserAgent = "LunarAccountManager/1.0";
+                req.UserAgent = BrowserUserAgent;
+                req.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
                 using (var resp = (HttpWebResponse)req.GetResponse())
                 using (var stream = resp.GetResponseStream())
                 using (var ms = new MemoryStream())
@@ -84,6 +85,8 @@ namespace LunarAccountManager
                     int n;
                     while ((n = stream.Read(buf, 0, buf.Length)) > 0)
                         ms.Write(buf, 0, n);
+                    if (ms.Length == 0)
+                        return null;
                     ms.Position = 0;
                     return Image.FromStream(ms);
                 }
@@ -93,6 +96,21 @@ namespace LunarAccountManager
                 return null;
             }
         }
+
+        /// <summary>Tries each URL in order and returns the first image that downloads.</summary>
+        public static Image TryDownloadImage(string[] urls, int timeoutMs)
+        {
+            foreach (string url in urls)
+            {
+                Image img = DownloadImage(url, timeoutMs);
+                if (img != null)
+                    return img;
+            }
+            return null;
+        }
+
+        public const string BrowserUserAgent =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
         public static string HttpGet(string url, int timeoutMs)
         {

@@ -11,10 +11,12 @@ Lunar Client 的账号数据保存在 `%USERPROFILE%\.lunarclient\settings\game\
 - 「查询 UUID」：按玩家名请求 Mojang 接口，查不到时提示「玩家不存在」
 - 皮肤预览：头像与全身图，按 UUID 拉取
 - 「设为当前」：切换 `activeAccountLocalId`
-- 「刷新为 12 小时后」：更新 `accessTokenExpiresAt`
-- 「写入文件」：写入前检查 Lunar Client 是否在运行，运行中拒绝写入
+- 「刷新 +12 小时」：更新 `accessTokenExpiresAt`
+- 「保存到 Lunar」：把当前填写的内容写入文件，写入后自动重读并刷新列表
+- 「刷新」：从磁盘重新读取
+- 写入前检查 Lunar Client 是否在运行，运行中拒绝写入
 - 每次写入自动备份，保留最近 5 份
-- 「自动写入」开关（默认关闭）
+- 「改动后自动保存」开关（默认关闭）
 
 ## 使用
 
@@ -22,7 +24,7 @@ Lunar Client 的账号数据保存在 `%USERPROFILE%\.lunarclient\settings\game\
 2. 运行 `LunarAccountManager.exe`
 3. 输入玩家名 → 「查询 UUID」
 4. 需要的话调整有效期
-5. 「写入文件」
+5. 「保存到 Lunar」
 6. 重新打开 Lunar Client
 
 改完想还原，去 `accounts.backup-*.json` 找备份。
