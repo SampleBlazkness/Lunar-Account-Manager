@@ -1,0 +1,4 @@
+dist/
+*.suo
+*.user
+*.backup-*.json
